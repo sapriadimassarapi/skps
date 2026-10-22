@@ -1942,7 +1942,7 @@ async function startScanner() {
 
       },
 
-      onScanSuccess,
+      (decodedText) => onScanSuccess(decodedText, false),
 
 
       function() {
@@ -2253,3 +2253,4 @@ startHeaderClock();updateCameraPresentation();updateButtons();
 </script>
 </body>
 </html>
+sw
