@@ -1359,6 +1359,8 @@
 'use strict';
 // Game-only adapter. No attendance endpoint, attendance roster or attendance cache is used.
 const $=id=>document.getElementById(id),GAME_KEY='wira-scanner-supplied-v3';
+const DEFAULT_GAME_API='https://script.google.com/macros/s/AKfycbwFu-f1Obr0T-eiuR-WzVNJC76gEwaIMex28cYC4LpXQlT2qzJCnT-YmPrQr1iS76-g/exec';
+const API_PREFERENCE='wira-game-api-v1';
 let link=null,API_URL='',validLaunch=false,scanner=null,processing=false,cameraRunning=false,cameraStarting=false,currentFacingMode='environment',scanEffectTimer=null,cameraReady=false,rosterReady=false,photosReady=true,startupError=null,readyOverlayShown=false,boatLoadingStartedAt=0,minimumLoadingTimer=null,headerClockTimer=null,waitingForCameraPermission=true,lastSuccessfulScan=null;
 let boardBusy=true,slot=null,statusTimer=null,statusInFlight=false,connectionVersion=0,lastAttempt=null,lastDecodedText='',lastDecodedAt=0;
 const headerTimeFormatter = new Intl.DateTimeFormat("ms-MY", {
@@ -2122,13 +2124,15 @@ function scannerApi(action,values={}){return new Promise((resolve,reject)=>{
   const url=new URL(API_URL);url.search=new URLSearchParams({action,...values,callback,t:String(Date.now())}).toString();script.src=url.href;document.head.appendChild(script);
 });}
 function credentials(){return {board:link.board,token:link.token};}
-function persistLink(){try{sessionStorage.setItem(GAME_KEY,JSON.stringify(link));}catch(e){}}
+function rememberApi(api){if(!apiValid(api))return;try{localStorage.setItem(API_PREFERENCE,api);}catch(e){}}
+function persistLink(){rememberApi(link.api);try{localStorage.setItem(GAME_KEY,JSON.stringify(link));}catch(e){try{sessionStorage.setItem(GAME_KEY,JSON.stringify(link));}catch(e){}}}
 function linked(){
   API_URL=link.api;validLaunch=true;boardBusy=true;slot=null;connectionVersion++;persistLink();$('pairForm').hidden=true;$('connectedControls').hidden=false;$('gameApi').value=API_URL;$('pairMessage').textContent='Telefon disambungkan ke game. Tekan Hidupkan kamera.';$('startButton').hidden=cameraRunning;$('startButton').textContent='📷 HIDUPKAN KAMERA';readyForNextScan();updateButtons();clearTimeout(statusTimer);statusPoll();updateStartupReadiness();
 }
 async function statusPoll(){
   if(statusInFlight)return;statusInFlight=true;const version=connectionVersion;
   try{if(!validLaunch||!link)return;const s=await scannerApi('status',credentials());if(version!==connectionVersion)return;
+    if(s.expires&&link.expires!==s.expires){link.expires=s.expires;persistLink();}
     const wasBusy=boardBusy,oldSlot=slot;boardBusy=s.busy;slot=s.slot;
     $('boardStatus').textContent=boardBusy?'🔒 Pemain aktif — tunggu permainan dan penyimpanan selesai.':'✓ Sedia — scan QR anda.';
     if(wasBusy&&!boardBusy&&oldSlot!==null&&oldSlot!==slot){lastSuccessfulScan=null;lastAttempt=null;$('retrySend').hidden=true;lastDecodedText='';readyForNextScan();setScanFeedback('Sedia untuk pemain seterusnya.','success');}
@@ -2158,14 +2162,15 @@ async function onScanSuccess(decodedText,retry=false){
 $('pairForm').onsubmit=async e=>{
   e.preventDefault();const api=$('gameApi').value.trim(),code=$('boardCode').value.trim();
   if(!apiValid(api)){$('pairMessage').textContent='Masukkan URL web app game yang berakhir dengan /exec.';return;}
-  $('pairButton').disabled=true;API_URL=api;
+  $('pairButton').disabled=true;API_URL=api;rememberApi(api);
   try{const r=await scannerApi('pair',{code});link={api,board:r.board,token:r.token,expires:r.expires};linked();}
   catch(e){$('pairMessage').textContent=e.message;}finally{$('pairButton').disabled=false;}
 };
 $('changeBoard').onclick=async()=>{
   if(processing){setScanFeedback('Tunggu penghantaran selesai.','pending');return;}
   validLaunch=false;connectionVersion++;clearTimeout(statusTimer);link=null;boardBusy=true;slot=null;lastAttempt=null;lastSuccessfulScan=null;lastDecodedText='';startupError=null;readyOverlayShown=false;await stopScanner();
-  try{sessionStorage.removeItem(GAME_KEY);}catch(e){}
+  try{localStorage.removeItem(GAME_KEY);}catch(e){}
+  try{sessionStorage.removeItem(GAME_KEY);sessionStorage.removeItem('wira-scanner-v2');}catch(e){}
   $('pairForm').hidden=false;$('connectedControls').hidden=true;$('retrySend').hidden=true;$('startButton').hidden=false;$('pairMessage').textContent='Masukkan URL game dan kod papan yang mahu disambungkan.';$('boardStatus').textContent='Belum disambungkan';readyForNextScan();setScanFeedback('','');updateButtons();updateStartupReadiness();$('gameApi').focus();
 };
 $('manualForm').onsubmit=e=>{e.preventDefault();initAudio();onScanSuccess($('manualId').value);};
@@ -2225,10 +2230,23 @@ document.addEventListener("pointerdown", function(event) {
 
 
 try{
+  let rememberedApi=DEFAULT_GAME_API;
+  try{const savedApi=localStorage.getItem(API_PREFERENCE);if(apiValid(savedApi))rememberedApi=savedApi;}catch(e){}
+  $('gameApi').value=rememberedApi;API_URL=rememberedApi;
   const hash=location.hash.slice(1);let candidate;
   if(hash){candidate=JSON.parse(decodeURIComponent(hash));history.replaceState(null,'',location.pathname+location.search);}
-  else{candidate=JSON.parse(sessionStorage.getItem(GAME_KEY)||'null')||JSON.parse(sessionStorage.getItem('wira-scanner-v2')||'null');}
-  if(candidate){if(!apiValid(candidate.api)||!candidate.board||!candidate.token)throw new Error('QR sambungan tidak sah.');link=candidate;linked();}
+  else{
+    try{candidate=JSON.parse(localStorage.getItem(GAME_KEY)||'null');}catch(e){}
+    if(!candidate)try{candidate=JSON.parse(sessionStorage.getItem(GAME_KEY)||'null')||JSON.parse(sessionStorage.getItem('wira-scanner-v2')||'null');}catch(e){}
+  }
+  if(candidate){
+    if(!apiValid(candidate.api)||!candidate.board||!candidate.token)throw new Error('QR sambungan tidak sah.');
+    $('gameApi').value=candidate.api;API_URL=candidate.api;rememberApi(candidate.api);
+    if(candidate.expires&&candidate.expires<=Date.now()){
+      try{localStorage.removeItem(GAME_KEY);sessionStorage.removeItem(GAME_KEY);sessionStorage.removeItem('wira-scanner-v2');}catch(e){}
+      $('pairMessage').textContent='Sesi terdahulu tamat. URL game sudah diisi; masukkan kod enam digit baharu daripada smartboard.';
+    }else{link=candidate;linked();}
+  }
 }catch(e){$('pairMessage').textContent=e.message;}
 startHeaderClock();updateCameraPresentation();updateButtons();
 
