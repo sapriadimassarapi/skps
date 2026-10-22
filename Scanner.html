@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ms"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>Scanner Wira Pulau Sepanggar</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(#72e5f4 0 180px,#fff0bd 180px);color:#14434d;font-family:'Trebuchet MS',Arial,sans-serif;min-height:100dvh}main{max-width:600px;margin:auto;padding:20px 16px 40px}h1{font-size:27px;margin:4px 0 8px}h2{font-size:23px;margin:0 0 12px}p{line-height:1.4}.card{background:#fffcee;border:3px solid #1a6973;border-radius:22px;padding:18px;margin:18px 0;box-shadow:0 6px #17596633}label{display:block;font-weight:800;margin:14px 0 6px}input,button{font:inherit;min-height:56px;border:2px solid #216e79;border-radius:12px;padding:12px;width:100%}input{background:white}button{background:#08766d;color:white;font-weight:800;cursor:pointer;margin:8px 0;box-shadow:0 3px #14515a}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible{outline:4px solid #d88a10;outline-offset:2px}.secondary{background:#275f7c}.danger{background:#875429}.row{display:flex;gap:10px}#reader{overflow:hidden;border-radius:14px;background:#123f4c;min-height:180px}#reader video{width:100%!important;object-fit:cover}#result{font-size:21px;font-weight:800;min-height:60px;padding:14px;border-radius:14px;background:#e6f8e8;overflow-wrap:anywhere}#result.error{background:#ffe3cd;color:#a33210}#result.pending{background:#fff0b8;color:#80530b}#boardStatus{font-size:18px;font-weight:800}small,.hint{font-size:14px;color:#4e6967}.badge{display:inline-block;background:#fff7cf;border:2px solid #1b6c75;padding:5px 9px;border-radius:20px;font-weight:800}details summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:800}[hidden]{display:none!important}#file{padding:10px;border:0}.success{animation:success .6s ease-out}@keyframes success{50%{box-shadow:0 0 0 5px #22a97188}}@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body><main><span class="badge">♻ Scanner permainan</span><h1>Wira Pulau Sepanggar</h1><p>Imbas QR murid untuk memasukkan nama pada smartboard.</p>
+<section id="pair" class="card"><h2>Sambungkan smartboard</h2><p>Imbas QR sambungan di smartboard dengan kamera biasa telefon, atau masukkan URL game dan kod enam digit.</p><form id="pairForm"><label for="api">URL web app game</label><input id="api" type="url" placeholder="https://script.google.com/macros/s/…/exec" required><label for="code">Kod pada smartboard</label><input id="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" required><button id="pairButton">Sambungkan scanner</button></form></section>
+<section id="scannerCard" class="card" hidden><h2>Scan QR anda</h2><p id="boardStatus" role="status">Menyemak papan…</p><div id="reader"></div><div class="row"><button id="start">Hidupkan kamera</button><button id="switch" class="secondary" disabled>Tukar kamera</button></div><button id="stop" class="secondary" hidden>Hentikan kamera</button><label for="file">Atau baca gambar QR</label><input id="file" type="file" accept="image/*" capture="environment"><details><summary>Masukkan ID / teks QR secara manual</summary><form id="manualForm"><label for="manual">ID murid atau kandungan QR</label><input id="manual" autocomplete="off" maxlength="2048" required><button id="manualSubmit">Hantar ID murid</button></form></details><p class="hint">Nama dan tahun disahkan daripada helaian Pemain. Imbasan ditolak semasa pemain aktif.</p><button id="unpair" class="danger">Sambung ke papan lain</button></section>
+<div id="result" role="status" aria-live="polite">Sediakan sambungan scanner dahulu.</div><button id="retry" hidden>Cuba hantar imbasan sama</button><p class="hint">Scanner ini hanya menghantar ke game. Tiada rekod dihantar ke sistem kehadiran.</p>
+</main><script>
+'use strict';
+const $=id=>document.getElementById(id),KEY='wira-scanner-v2';
+let link=null,scanner=null,running=false,starting=false,facing='environment',processing=false,busy=true,slot=null,statusTimer,statusInFlight=false,lastText='',lastAt=0,lastAttempt=null,pollVersion=0;
+function show(text,type=''){const e=$('result');e.textContent=text;e.className=type;}
+function apiValid(api){try{const u=new URL(api);return u.protocol==='https:'&&u.hostname==='script.google.com'&&/^\/macros\/s\/[^/]+\/exec$/.test(u.pathname)&&!u.search&&!u.hash;}catch(e){return false;}}
+function apiCall(action,values){return new Promise((resolve,reject)=>{
+  if(!link||!apiValid(link.api))return reject(new Error('URL game tidak sah.'));
+  const callback='wira_'+crypto.randomUUID().replace(/-/g,''),script=document.createElement('script');let done=false;
+  const cleanup=()=>{clearTimeout(timeout);script.remove();delete window[callback];};
+  const fail=message=>{if(done)return;done=true;cleanup();reject(new Error(message));};
+  const timeout=setTimeout(()=>fail('Tiada jawapan daripada game. Semak internet dan tetapan akses deployment.'),25000);
+  window[callback]=r=>{if(done)return;done=true;cleanup();if(r&&r.ok)resolve(r);else reject(new Error(r?.error||'Jawapan game tidak sah.'));};
+  script.onerror=()=>fail('Game tidak dapat dihubungi. Semak URL /exec dan akses Anyone.');
+  const url=new URL(link.api);url.search=new URLSearchParams(Object.assign({action,callback,t:String(Date.now())},values)).toString();script.src=url.href;document.head.append(script);
+});}
+function saveLink(){try{sessionStorage.setItem(KEY,JSON.stringify(link));}catch(e){}}
+function linked(){saveLink();$('pair').hidden=true;$('scannerCard').hidden=false;$('api').value=link.api;busy=true;slot=null;show('Telefon disambungkan. Tekan Hidupkan kamera untuk mengimbas QR murid.');clearTimeout(statusTimer);pollVersion++;statusPoll();}
+async function statusPoll(){if(statusInFlight)return;const version=pollVersion;statusInFlight=true;try{
+  if(!link||!link.token)return;
+  const s=await apiCall('status',{board:link.board,token:link.token});if(version!==pollVersion)return;
+  busy=s.busy;slot=s.slot;$('boardStatus').textContent=busy?'🔒 Pemain aktif — tunggu permainan selesai':'✓ Sedia — imbas QR murid';
+ }catch(e){if(version===pollVersion){busy=true;slot=null;$('boardStatus').textContent=e.message;}}
+ finally{statusInFlight=false;if(link?.token)statusTimer=setTimeout(statusPoll,document.hidden?15000:busy?4000:2500);}}
+async function stopCamera(){if(scanner&&running){try{await scanner.stop();}catch(e){}}running=false;$('stop').hidden=true;$('switch').disabled=true;$('start').disabled=false;}
+async function startCamera(){if(starting||running)return;starting=true;$('start').disabled=true;try{
+  if(!window.isSecureContext)throw new Error('Kamera memerlukan HTTPS. Hoskan Scanner.html pada GitHub Pages atau pelayan HTTPS.');
+  if(!window.Html5Qrcode)throw new Error('Pustaka QR belum dimuatkan. Semak internet kemudian muat semula.');
+  scanner ||= new Html5Qrcode('reader',{formatsToSupport:[Html5QrcodeSupportedFormats.QR_CODE]});
+  await scanner.start({facingMode:{ideal:facing}},{fps:10,qrbox:(w,h)=>({width:Math.floor(Math.min(w,h)*.72),height:Math.floor(Math.min(w,h)*.72)})},text=>submitQr(text),()=>{});
+  running=true;$('stop').hidden=false;$('switch').disabled=false;show('Kamera aktif. Halakan QR murid ke dalam bingkai.');
+ }catch(e){show('Kamera belum tersedia: '+(e.message||e)+'. Benarkan akses kamera dalam pelayar, atau gunakan gambar QR / ID manual.','error');$('start').disabled=false;}
+ finally{starting=false;}}
+async function submitQr(raw,retry=false){
+  const text=String(raw||'').trim();if(!text||processing)return;
+  if(!retry&&(text===lastText&&Date.now()-lastAt<4000))return;
+  lastText=text;lastAt=Date.now();
+  if(!retry&&(busy||slot===null)){show('Imbasan ditolak. Tunggu smartboard memaparkan “Scan QR anda” dan scanner disegerakkan.','pending');return;}
+  processing=true;$('manualSubmit').disabled=true;$('retry').hidden=true;
+  // ID permintaan yang sama digunakan semula jika jawapan rangkaian hilang.
+  if(!retry)lastAttempt={qr:text,request:crypto.randomUUID(),slot};
+  show('Mengesahkan QR murid…','pending');
+  try{const r=await apiCall('scan',Object.assign({board:link.board,token:link.token},lastAttempt));busy=true;show('✓ '+r.name+' — nama dihantar ke smartboard. Sedia untuk latihan.','success');try{navigator.vibrate?.(100);}catch(e){}lastAttempt=null;}
+  catch(e){show(e.message,'error');$('retry').hidden=false;}
+  finally{processing=false;$('manualSubmit').disabled=false;clearTimeout(statusTimer);statusPoll();}
+}
+$('pairForm').onsubmit=async e=>{e.preventDefault();const api=$('api').value.trim(),code=$('code').value.trim();if(!apiValid(api))return show('Gunakan URL web app game yang berakhir dengan /exec.','error');$('pairButton').disabled=true;link={api};try{const r=await apiCall('pair',{code});link=Object.assign({api},r);linked();}catch(e){show(e.message,'error');}finally{$('pairButton').disabled=false;}};
+$('start').onclick=startCamera;$('stop').onclick=stopCamera;$('switch').onclick=async()=>{if(starting)return;facing=facing==='environment'?'user':'environment';await stopCamera();await startCamera();};
+$('manualForm').onsubmit=e=>{e.preventDefault();submitQr($('manual').value);};$('retry').onclick=()=>{if(lastAttempt)submitQr(lastAttempt.qr,true);};
+$('file').onchange=async e=>{const file=e.target.files[0];if(!file)return;await stopCamera();try{if(!window.Html5Qrcode)throw new Error('Pustaka QR belum dimuatkan.');scanner ||= new Html5Qrcode('reader');const text=await scanner.scanFile(file,true);await submitQr(text);}catch(e){show('Gambar QR tidak dapat dibaca: '+(e.message||e),'error');}finally{e.target.value='';}};
+$('unpair').onclick=async()=>{if(processing)return show('Tunggu penghantaran imbasan selesai.','pending');await stopCamera();clearTimeout(statusTimer);pollVersion++;link=null;busy=true;slot=null;lastAttempt=null;$('retry').hidden=true;try{sessionStorage.removeItem(KEY);}catch(e){}$('pair').hidden=false;$('scannerCard').hidden=true;show('Masukkan kod papan baharu.');};
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopCamera();else if(link?.token){clearTimeout(statusTimer);statusPoll();}});
+try{
+  const fragment=location.hash.slice(1);
+  if(fragment){const candidate=JSON.parse(decodeURIComponent(fragment));if(!apiValid(candidate.api)||!candidate.board||!candidate.token)throw new Error('QR sambungan tidak sah.');link=candidate;history.replaceState(null,'',location.pathname+location.search);linked();}
+  else{const saved=JSON.parse(sessionStorage.getItem(KEY)||'null');if(saved&&apiValid(saved.api)&&saved.token){link=saved;linked();}}
+}catch(e){show('Sambungan belum tersedia: '+e.message,'error');}
+</script></body></html>
