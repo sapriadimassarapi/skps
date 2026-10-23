@@ -2099,6 +2099,7 @@ async function startScanner() {
 // =================================================
 
 function escapeHtml(text){const div=document.createElement('div');div.textContent=text==null?'':String(text);return div.innerHTML;}
+function photoUrl(value){try{const u=new URL(String(value||''));return u.protocol==='https:'?u.href:'';}catch(e){return '';}}
 function studentNameHtml(name) {
   const value = String(name || "Pelajar");
   const length = Array.from(value).length;
@@ -2155,6 +2156,8 @@ async function onScanSuccess(decodedText,retry=false){
     const initial=Array.from(String(r.name||'M'))[0];
     $('result').classList.remove('duplicate');$('result').classList.add('success');
     $('result').innerHTML='<div class="result-content"><div class="student-photo-frame" aria-label="Avatar pemain">'+escapeHtml(initial)+'</div>'+studentNameHtml(r.name)+'<div class="result-meta"><div class="result-status">SEDIA BERMAIN</div><div class="result-time">'+escapeHtml(new Date().toLocaleTimeString('ms-MY',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',second:'2-digit'}))+'</div></div><p class="result-message">Nama dihantar ke smartboard. Tekan Mula latihan pada game.</p></div>';
+    const photo=photoUrl(r.photo),frame=$('result').querySelector('.student-photo-frame');
+    if(photo&&frame){const image=document.createElement('img');image.alt='Wajah '+r.name;image.referrerPolicy='no-referrer';image.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:inherit';image.onload=()=>frame.replaceChildren(image);image.onerror=()=>{frame.title='Foto tidak dapat dimuatkan';};image.src=photo;}
     soundSuccess();setScanFeedback('✓ Nama disahkan. Scanner dikunci sehingga keputusan disimpan.','success');
   }catch(e){if(version===connectionVersion){soundError();setScanFeedback(e.message,'error');$('retrySend').hidden=false;}}
   finally{processing=false;updateButtons();clearTimeout(statusTimer);if(validLaunch)statusPoll();}
