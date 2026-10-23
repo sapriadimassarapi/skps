@@ -2114,7 +2114,7 @@ function readyForNextScan(){
   $('result').classList.remove('success','duplicate');
   $('result').innerHTML='<div class="icon">📷</div><div class="waiting">'+(validLaunch?'Sila imbas QR murid':'Sambungkan smartboard dahulu')+'</div>';
 }
-function apiValid(api){try{const u=new URL(api);return u.protocol==='https:'&&u.hostname==='script.google.com'&&/^\/macros\/s\/[^/]+\/exec$/.test(u.pathname)&&!u.search&&!u.hash;}catch(e){return false;}}
+function apiValid(api){try{const u=new URL(api);return u.protocol==='https:'&&u.hostname==='script.google.com'&&/^\/(?:a\/macros\/[^/]+|macros)\/s\/[^/]+\/exec$/.test(u.pathname)&&!u.search&&!u.hash;}catch(e){return false;}}
 function scannerApi(action,values={}){return new Promise((resolve,reject)=>{
   if(!apiValid(API_URL))return reject(new Error('URL game mesti berakhir dengan /exec.'));
   const callback='wira_'+crypto.randomUUID().replace(/-/g,''),script=document.createElement('script');let done=false;
@@ -2157,8 +2157,8 @@ async function onScanSuccess(decodedText,retry=false){
     $('result').classList.remove('duplicate');$('result').classList.add('success');
     $('result').innerHTML='<div class="result-content"><div class="student-photo-frame" aria-label="Avatar pemain">'+escapeHtml(initial)+'</div>'+studentNameHtml(r.name)+'<div class="result-meta"><div class="result-status">SEDIA BERMAIN</div><div class="result-time">'+escapeHtml(new Date().toLocaleTimeString('ms-MY',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',second:'2-digit'}))+'</div></div><p class="result-message">Nama dihantar ke smartboard. Tekan Mula latihan pada game.</p></div>';
     const photo=photoUrl(r.photo),frame=$('result').querySelector('.student-photo-frame');
-    if(photo&&frame){const image=document.createElement('img');image.alt='Wajah '+r.name;image.referrerPolicy='no-referrer';image.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:inherit';image.onload=()=>frame.replaceChildren(image);image.onerror=()=>{frame.title='Foto tidak dapat dimuatkan';};image.src=photo;}
-    soundSuccess();setScanFeedback('✓ Nama disahkan. Scanner dikunci sehingga keputusan disimpan.','success');
+    if(photo&&frame){const image=document.createElement('img');image.alt='Wajah '+r.name;image.referrerPolicy='no-referrer';image.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:inherit';image.onload=()=>frame.replaceChildren(image);image.onerror=()=>{frame.title='Foto tidak dapat dimuatkan';setScanFeedback('Nama disahkan tetapi pelayar gagal memaparkan gambar. Cuba muat semula scanner.','warning');};image.src=photo;}
+    soundSuccess();setScanFeedback(photo?'✓ Nama dan foto diterima. Scanner dikunci sehingga keputusan disimpan.':'Nama disahkan. '+(r.photoError||'Respons pelayan tiada foto; semak deployment Code.gs.')+(r.photoVersion?' ['+r.photoVersion+']':''),'success');
   }catch(e){if(version===connectionVersion){soundError();setScanFeedback(e.message,'error');$('retrySend').hidden=false;}}
   finally{processing=false;updateButtons();clearTimeout(statusTimer);if(validLaunch)statusPoll();}
 }
