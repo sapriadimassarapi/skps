@@ -2099,7 +2099,7 @@ async function startScanner() {
 // =================================================
 
 function escapeHtml(text){const div=document.createElement('div');div.textContent=text==null?'':String(text);return div.innerHTML;}
-function photoUrl(value){try{const u=new URL(String(value||''));return u.protocol==='https:'?u.href:'';}catch(e){return '';}}
+function photoUrl(value){const text=String(value||'');if(/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(text))return text;try{const u=new URL(text);return u.protocol==='https:'?u.href:'';}catch(e){return '';}}
 function studentNameHtml(name) {
   const value = String(name || "Pelajar");
   const length = Array.from(value).length;
