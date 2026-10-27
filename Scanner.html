@@ -1327,10 +1327,10 @@
 
 
 
-  <section id="manualPanel" class="manual-panel" aria-label="Pilih nama tanpa QR">
-    <h2>Pilih nama tanpa QR</h2>
-    <form id="manualForm"><label for="manualName">Nama pengunjung</label><select id="manualName" required disabled><option value="">Sambungkan scanner untuk memuatkan nama…</option></select><button id="manualSubmit" type="submit" disabled>Hantar ke game</button></form>
-    <p id="manualStatus" role="status">Senarai nama akan diambil daripada kolum B tab Pengunjung.</p>
+  <section id="manualPanel" class="manual-panel" aria-label="Pilih murid tanpa QR">
+    <h2>Pilih murid tanpa QR</h2>
+    <form id="manualForm"><label for="manualClass">Kelas</label><select id="manualClass" required disabled><option value="">Sambungkan scanner untuk memuatkan kelas…</option></select><label for="manualStudent">Nama murid</label><select id="manualStudent" required disabled><option value="">Pilih kelas dahulu</option></select><button id="manualSubmit" type="submit" disabled>Hantar ke game</button></form>
+    <p id="manualStatus" role="status">Senarai kelas dan murid diambil daripada tab Pemain.</p>
     <label for="qrFile">Atau pilih gambar QR</label><input id="qrFile" type="file" accept="image/*" capture="environment" disabled>
     <button id="retrySend" type="button" hidden>Cuba hantar imbasan sama</button>
   </section>
@@ -1361,7 +1361,7 @@
 const $=id=>document.getElementById(id),GAME_KEY='wira-scanner-supplied-v3';
 const DEFAULT_GAME_API='https://script.google.com/macros/s/AKfycbwFu-f1Obr0T-eiuR-WzVNJC76gEwaIMex28cYC4LpXQlT2qzJCnT-YmPrQr1iS76-g/exec';
 const API_PREFERENCE='wira-game-api-v1';
-let link=null,API_URL='',validLaunch=false,scanner=null,processing=false,cameraRunning=false,cameraStarting=false,currentFacingMode='environment',scanEffectTimer=null,cameraReady=false,rosterReady=false,rosterLoading=false,photosReady=true,startupError=null,readyOverlayShown=false,boatLoadingStartedAt=0,minimumLoadingTimer=null,headerClockTimer=null,waitingForCameraPermission=true,lastSuccessfulScan=null;
+let link=null,API_URL='',validLaunch=false,scanner=null,processing=false,cameraRunning=false,cameraStarting=false,currentFacingMode='environment',scanEffectTimer=null,cameraReady=false,rosterReady=false,rosterLoading=false,studentRoster=[],photosReady=true,startupError=null,readyOverlayShown=false,boatLoadingStartedAt=0,minimumLoadingTimer=null,headerClockTimer=null,waitingForCameraPermission=true,lastSuccessfulScan=null;
 let boardBusy=true,slot=null,statusTimer=null,statusInFlight=false,connectionVersion=0,lastAttempt=null,lastDecodedText='',lastDecodedAt=0;
 const headerTimeFormatter = new Intl.DateTimeFormat("ms-MY", {
   timeZone: "Asia/Kuala_Lumpur",
@@ -1452,8 +1452,9 @@ function updateStartupReadiness(){
   else $('scannerSystemOverlay').hidden=true;
 }
 function updateButtons(){
-  $('manualName').disabled=!validLaunch||processing||boardBusy||slot===null||!rosterReady;
-  $('manualSubmit').disabled=!validLaunch||processing||boardBusy||slot===null||!rosterReady||!$('manualName').value;
+  $('manualClass').disabled=!validLaunch||processing||boardBusy||slot===null||!rosterReady;
+  $('manualStudent').disabled=!validLaunch||processing||boardBusy||slot===null||!rosterReady||!$('manualClass').value;
+  $('manualSubmit').disabled=!validLaunch||processing||boardBusy||slot===null||!rosterReady||!$('manualStudent').value;
   $('qrFile').disabled=!validLaunch||processing||boardBusy||slot===null;
   if(!cameraRunning)$('startButton').disabled=!validLaunch||cameraStarting;
 }
@@ -2130,14 +2131,14 @@ async function loadVisitorRoster(){
   rosterLoading=true;rosterReady=false;updateButtons();
   $('manualStatus').textContent='Memuatkan nama daripada tab Pengunjung…';
   try{
-    const r=await scannerApi('roster',credentials()),people=Array.isArray(r.visitors)?r.visitors:[];
-    const options=[new Option('— Pilih nama pengunjung —','')];
-    people.forEach(person=>{const name=String(person?.name||'').trim(),id=String(person?.id||'').trim();if(name&&id)options.push(new Option(name,id));});
-    $('manualName').replaceChildren(...options);
-    rosterReady=options.length>1;
-    $('manualStatus').textContent=rosterReady?((options.length-1)+' nama tersedia daripada kolum B tab Pengunjung.'):'Tiada nama ditemui dalam kolum B tab Pengunjung.';
+    const r=await scannerApi('roster',credentials());studentRoster=Array.isArray(r.students)?r.students:[];
+    const classes=[...new Set(studentRoster.map(p=>String(p.classroom||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ms',{numeric:true}));
+    $('manualClass').replaceChildren(new Option('— Pilih kelas —',''),...classes.map(name=>new Option(name,name)));
+    $('manualStudent').replaceChildren(new Option('Pilih kelas dahulu',''));
+    rosterReady=studentRoster.length>0;
+    $('manualStatus').textContent=rosterReady?(studentRoster.length+' murid tersedia daripada tab Pemain.'):'Tiada murid ditemui dalam tab Pemain.';
   }catch(e){
-    $('manualName').replaceChildren(new Option('Senarai nama gagal dimuatkan',''));
+    studentRoster=[];$('manualClass').replaceChildren(new Option('Senarai kelas gagal dimuatkan',''));$('manualStudent').replaceChildren(new Option('Senarai murid gagal dimuatkan',''));
     $('manualStatus').textContent='Senarai nama gagal dimuatkan: '+e.message;
   }finally{rosterLoading=false;updateButtons();updateStartupReadiness();}
 }
@@ -2193,8 +2194,9 @@ $('changeBoard').onclick=async()=>{
   try{sessionStorage.removeItem(GAME_KEY);sessionStorage.removeItem('wira-scanner-v2');}catch(e){}
   $('pairForm').hidden=false;$('connectedControls').hidden=true;$('retrySend').hidden=true;$('startButton').hidden=false;$('pairMessage').textContent='Masukkan URL game dan kod papan yang mahu disambungkan.';$('boardStatus').textContent='Belum disambungkan';readyForNextScan();setScanFeedback('','');updateButtons();updateStartupReadiness();$('gameApi').focus();
 };
-$('manualName').onchange=updateButtons;
-$('manualForm').onsubmit=e=>{e.preventDefault();initAudio();const selected=$('manualName');if(selected.value)onScanSuccess(selected.value);};
+$('manualClass').onchange=()=>{const selected=$('manualClass').value,students=studentRoster.filter(p=>String(p.classroom||'').trim()===selected).sort((a,b)=>String(a.name).localeCompare(String(b.name),'ms'));$('manualStudent').replaceChildren(new Option(selected?'— Pilih nama murid —':'Pilih kelas dahulu',''),...students.map(p=>new Option(p.name,p.id)));updateButtons();};
+$('manualStudent').onchange=updateButtons;
+$('manualForm').onsubmit=e=>{e.preventDefault();initAudio();const selected=$('manualStudent');if(selected.value)onScanSuccess(selected.value);};
 $('retrySend').onclick=()=>{if(lastAttempt)onScanSuccess(lastAttempt.qr,true);};
 $('scannerRetryButton').onclick=retryStartup;
 $('qrFile').onchange=async e=>{
